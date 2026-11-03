@@ -1,76 +1,238 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Suspense } from "react";
 
-const ITEM_TYPES = [
-  "aerosol_cans",
-  "aluminum_food_cans",
-  "aluminum_soda_cans",
-  "cardboard_boxes",
-  "cardboard_packaging",
-  "clothing",
-  "coffee_grounds",
-  "disposable_plastic_cutlery",
-  "eggshells",
-  "food_waste",
-  "glass_beverage_bottles",
-  "glass_cosmetic_containers",
-  "glass_food_jars",
-  "magazines",
-  "newspaper",
-  "office_paper",
-  "paper_cups",
-  "plastic_cup_lids",
-  "plastic_detergent_bottles",
-  "plastic_food_containers",
-  "plastic_shopping_bags",
-  "plastic_soda_bottles",
-  "plastic_straws",
-  "plastic_trash_bags",
-  "plastic_water_bottles",
-  "shoes",
-  "steel_food_cans",
-  "styrofoam_cups",
-  "styrofoam_food_containers",
-  "tea_bags",
-];
-
-type IItemType = typeof ITEM_TYPES[number];
-
-const ITEM_LABELS: Record<string, string> = {
-  aerosol_cans: "Aerosol Cans",
-  aluminum_food_cans: "Aluminum Food Cans",
-  aluminum_soda_cans: "Aluminum Soda Cans",
-  cardboard_boxes: "Cardboard Boxes",
-  cardboard_packaging: "Cardboard Packaging",
-  clothing: "Clothing",
-  coffee_grounds: "Coffee Grounds",
-  disposable_plastic_cutlery: "Disposable Plastic Cutlery",
-  eggshells: "Eggshells",
-  food_waste: "Food Waste",
-  glass_beverage_bottles: "Glass Beverage Bottles",
-  glass_cosmetic_containers: "Glass Cosmetic Containers",
-  glass_food_jars: "Glass Food Jars",
-  magazines: "Magazines",
-  newspaper: "Newspaper",
-  office_paper: "Office Paper",
-  paper_cups: "Paper Cups",
-  plastic_cup_lids: "Plastic Cup Lids",
-  plastic_detergent_bottles: "Plastic Detergent Bottles",
-  plastic_food_containers: "Plastic Food Containers",
-  plastic_shopping_bags: "Plastic Shopping Bags",
-  plastic_soda_bottles: "Plastic Soda Bottles",
-  plastic_straws: "Plastic Straws",
-  plastic_trash_bags: "Plastic Trash Bags",
-  plastic_water_bottles: "Plastic Water Bottles",
-  shoes: "Shoes",
-  steel_food_cans: "Steel Food Cans",
-  styrofoam_cups: "Styrofoam Cups",
-  styrofoam_food_containers: "Styrofoam Food Containers",
-  tea_bags: "Tea Bags",
+const WASTE_CLASS_METADATA: Record<
+  string,
+  {
+    label: string;
+    material: string;
+    status: string;
+    description: string;
+    icon: string;
+  }
+> = {
+  aerosol_cans: {
+    label: "Aerosol Cans",
+    material: "Metal packaging",
+    status: "Recyclable",
+    description: "Metal container suited for material recovery and proper recycling streams.",
+    icon: "🧴",
+  },
+  aluminum_food_cans: {
+    label: "Aluminum Food Cans",
+    material: "Aluminum",
+    status: "Highly recyclable",
+    description: "A high-value metal stream that can be remelted and reused efficiently.",
+    icon: "🥫",
+  },
+  aluminum_soda_cans: {
+    label: "Aluminum Soda Cans",
+    material: "Aluminum",
+    status: "Highly recyclable",
+    description: "Lightweight aluminum packaging with strong resale and recycling value.",
+    icon: "🥤",
+  },
+  cardboard_boxes: {
+    label: "Cardboard Boxes",
+    material: "Paperboard",
+    status: "Recyclable",
+    description: "Bulk paper packaging ideal for recycling, repurposing, and craft projects.",
+    icon: "📦",
+  },
+  cardboard_packaging: {
+    label: "Cardboard Packaging",
+    material: "Paperboard",
+    status: "Recyclable",
+    description: "Lightweight corrugated packaging that can be diverted into recycling or reuse loops.",
+    icon: "📦",
+  },
+  clothing: {
+    label: "Clothing",
+    material: "Textile",
+    status: "Reuse ready",
+    description: "Textile item with strong repair, resale, and upcycling potential.",
+    icon: "👕",
+  },
+  coffee_grounds: {
+    label: "Coffee Grounds",
+    material: "Organic waste",
+    status: "Compostable",
+    description: "Organic by-product suited for composting, soil enrichment, and garden use.",
+    icon: "☕",
+  },
+  disposable_plastic_cutlery: {
+    label: "Disposable Plastic Cutlery",
+    material: "Plastic",
+    status: "Needs sorting",
+    description: "Single-use plastic item that should be sorted and recycled where possible.",
+    icon: "🍴",
+  },
+  eggshells: {
+    label: "Eggshells",
+    material: "Organic waste",
+    status: "Compostable",
+    description: "Calcium-rich organic waste that can be composted or used in soil mixes.",
+    icon: "🥚",
+  },
+  food_waste: {
+    label: "Food Waste",
+    material: "Organic waste",
+    status: "Compostable",
+    description: "Organic material suitable for composting and nutrient recovery programs.",
+    icon: "🍏",
+  },
+  glass_beverage_bottles: {
+    label: "Glass Beverage Bottles",
+    material: "Glass",
+    status: "Recyclable",
+    description: "Glass stream item that can be remelted repeatedly without quality loss.",
+    icon: "🥃",
+  },
+  glass_cosmetic_containers: {
+    label: "Glass Cosmetic Containers",
+    material: "Glass",
+    status: "Recyclable",
+    description: "Recycled glass container with a strong circular reuse pathway.",
+    icon: "🧴",
+  },
+  glass_food_jars: {
+    label: "Glass Food Jars",
+    material: "Glass",
+    status: "Recyclable",
+    description: "Reusable glass packaging ideal for return-to-recycling or refilling systems.",
+    icon: "🫙",
+  },
+  magazines: {
+    label: "Magazines",
+    material: "Paper",
+    status: "Recyclable",
+    description: "Low-grade paper material suitable for milling and paper recovery.",
+    icon: "📰",
+  },
+  newspaper: {
+    label: "Newspaper",
+    material: "Paper",
+    status: "Recyclable",
+    description: "Recovered paper stream with a strong recycling value in paper manufacturing.",
+    icon: "🗞️",
+  },
+  office_paper: {
+    label: "Office Paper",
+    material: "Paper",
+    status: "Recyclable",
+    description: "Clean paper stream with excellent recycling and fiber recovery potential.",
+    icon: "📄",
+  },
+  paper_cups: {
+    label: "Paper Cups",
+    material: "Paper laminate",
+    status: "Needs sorting",
+    description: "Paper cup material needs proper sorting due to mixed-layer construction.",
+    icon: "☕",
+  },
+  plastic_cup_lids: {
+    label: "Plastic Cup Lids",
+    material: "Plastic",
+    status: "Recyclable",
+    description: "Plastic lid material suitable for plastics recovery when clean and sorted.",
+    icon: "🧃",
+  },
+  plastic_detergent_bottles: {
+    label: "Plastic Detergent Bottles",
+    material: "Plastic",
+    status: "Recyclable",
+    description: "Household plastic packaging commonly recovered through plastics recycling programs.",
+    icon: "🧼",
+  },
+  plastic_food_containers: {
+    label: "Plastic Food Containers",
+    material: "Plastic",
+    status: "Recyclable",
+    description: "Food-grade plastic packaging with recovery and reuse potential after cleaning.",
+    icon: "🥡",
+  },
+  plastic_shopping_bags: {
+    label: "Plastic Shopping Bags",
+    material: "Plastic",
+    status: "Needs sorting",
+    description: "Lightweight plastic item that is best recovered in dedicated collection streams.",
+    icon: "🛍️",
+  },
+  plastic_soda_bottles: {
+    label: "Plastic Soda Bottles",
+    material: "Plastic",
+    status: "Recyclable",
+    description: "Common PET packaging stream with strong mechanical recycling value.",
+    icon: "🥤",
+  },
+  plastic_straws: {
+    label: "Plastic Straws",
+    material: "Plastic",
+    status: "Needs sorting",
+    description: "Thin plastic item that requires careful sorting and proper recycling handling.",
+    icon: "🥤",
+  },
+  plastic_trash_bags: {
+    label: "Plastic Trash Bags",
+    material: "Plastic",
+    status: "Needs sorting",
+    description: "Mixed plastic waste requiring careful collection and recycling coordination.",
+    icon: "🗑️",
+  },
+  plastic_water_bottles: {
+    label: "Plastic Water Bottles",
+    material: "PET plastic",
+    status: "Recyclable",
+    description: "Widely accepted PET material stream for bottle-to-bottle recycling systems.",
+    icon: "💧",
+  },
+  shoes: {
+    label: "Shoes",
+    material: "Mixed materials",
+    status: "Repair or reuse",
+    description: "Footwear item with reuse, repair, and material recovery pathways.",
+    icon: "👟",
+  },
+  steel_food_cans: {
+    label: "Steel Food Cans",
+    material: "Steel",
+    status: "Highly recyclable",
+    description: "Durable metal packaging with excellent recovery and remanufacturing value.",
+    icon: "🥫",
+  },
+  styrofoam_cups: {
+    label: "Styrofoam Cups",
+    material: "Expanded polystyrene",
+    status: "Needs sorting",
+    description: "Foam packaging item that requires special handling and designated collection.",
+    icon: "🧁",
+  },
+  styrofoam_food_containers: {
+    label: "Styrofoam Food Containers",
+    material: "Expanded polystyrene",
+    status: "Needs sorting",
+    description: "Foam food packaging requiring specific sorting and specialized recycling channels.",
+    icon: "🥡",
+  },
+  tea_bags: {
+    label: "Tea Bags",
+    material: "Organic waste",
+    status: "Compostable",
+    description: "Organic tea residue suited for composting and soil improvement.",
+    icon: "🫖",
+  },
 };
+
+const ITEM_TYPES = Object.keys(WASTE_CLASS_METADATA) as Array<keyof typeof WASTE_CLASS_METADATA>;
+
+type IItemType = (typeof ITEM_TYPES)[number];
+
+const ITEM_LABELS: Record<string, string> = Object.fromEntries(
+  Object.entries(WASTE_CLASS_METADATA).map(([key, value]) => [key, value.label])
+);
 
 type ResultClientProps = {
   initialItem: string;
@@ -83,6 +245,12 @@ export default function ResultClient({ initialItem }: ResultClientProps) {
   const [price, setPrice] = useState<number | null>(null);
   const [priceError, setPriceError] = useState<string | null>(null);
   const [isPredictingPrice, setIsPredictingPrice] = useState(false);
+
+  useEffect(() => {
+    if (ITEM_TYPES.includes(initialItem as IItemType)) {
+      setItemType(initialItem as IItemType);
+    }
+  }, [initialItem]);
 
   const [impact, setImpact] = useState<{
     co2: number;
@@ -99,12 +267,20 @@ export default function ResultClient({ initialItem }: ResultClientProps) {
   const [unit, setUnit] = useState("kg");
   const [weight, setWeight] = useState(1);
 
-  const activeSummary = {
-    icon: "♻️",
+  const selectedMetadata = WASTE_CLASS_METADATA[itemType] ?? {
     label: ITEM_LABELS[itemType] ?? itemType,
-    material: "Recyclable material",
-    status: "Recyclable",
-    description: "Ready for circular reuse and resale opportunities.",
+    material: "Mixed material",
+    status: "Needs assessment",
+    description: "This item category is recognized by the model and can be reviewed for circular reuse opportunities.",
+    icon: "♻️",
+  };
+
+  const activeSummary = {
+    icon: selectedMetadata.icon,
+    label: selectedMetadata.label,
+    material: selectedMetadata.material,
+    status: selectedMetadata.status,
+    description: selectedMetadata.description,
   };
 
   const weightInKg =
