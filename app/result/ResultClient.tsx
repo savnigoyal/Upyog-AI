@@ -238,6 +238,16 @@ type ResultClientProps = {
   initialItem: string;
 };
 
+type ExplanationResult = {
+  predicted_class: string;
+  confidence: number;
+  dominant_region: string;
+  explanation: string;
+  original_image: string;
+  heatmap_image: string;
+  overlay_image: string;
+};
+
 export default function ResultClient({ initialItem }: ResultClientProps) {
   const [itemType, setItemType] = useState<IItemType>(
     ITEM_TYPES.includes(initialItem as IItemType) ? (initialItem as IItemType) : ITEM_TYPES[0]
@@ -245,8 +255,19 @@ export default function ResultClient({ initialItem }: ResultClientProps) {
   const [price, setPrice] = useState<number | null>(null);
   const [priceError, setPriceError] = useState<string | null>(null);
   const [isPredictingPrice, setIsPredictingPrice] = useState(false);
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [explanationResult, setExplanationResult] = useState<ExplanationResult | null>(null);
+  const [isGeneratingExplanation, setIsGeneratingExplanation] = useState(false);
+  const [explanationError, setExplanationError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      const storedImage = sessionStorage.getItem("upyog-last-upload");
+      if (storedImage) {
+        setUploadedImage(storedImage);
+      }
+    }
+
     if (ITEM_TYPES.includes(initialItem as IItemType)) {
       setItemType(initialItem as IItemType);
     }
@@ -335,6 +356,58 @@ export default function ResultClient({ initialItem }: ResultClientProps) {
     return null;
   };
 
+  const handleGenerateExplanation = async () => {
+    if (!uploadedImage) {
+      setExplanationError("Upload an image before generating an explanation.");
+      return;
+    }
+
+    setIsGeneratingExplanation(true);
+    setExplanationError(null);
+
+    try {
+      const imageResponse = await fetch(uploadedImage);
+      const imageBlob = await imageResponse.blob();
+      const formData = new FormData();
+      const imageFile = new File([imageBlob], "uploaded-image.jpg", {
+        type: imageBlob.type || "image/jpeg",
+      });
+
+      formData.append("file", imageFile);
+
+      const response = await fetch("/api/explain", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error || "Could not generate the explanation");
+      }
+
+      setExplanationResult(data as ExplanationResult);
+    } catch (error) {
+      setExplanationError(
+        error instanceof Error ? error.message : "Could not generate the explanation"
+      );
+      setExplanationResult(null);
+    } finally {
+      setIsGeneratingExplanation(false);
+    }
+  };
+
+  const handleDownloadExplanation = () => {
+    if (!explanationResult?.overlay_image) return;
+
+    const link = document.createElement("a");
+    link.href = explanationResult.overlay_image;
+    link.download = `upyog-gradcam-${itemType}.jpg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const impactCards = [
     {
       label: "CO₂ saved",
@@ -401,6 +474,20 @@ export default function ResultClient({ initialItem }: ResultClientProps) {
                   <span className="rounded-full bg-gradient-to-r from-emerald-500 to-green-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm shadow-emerald-200">
                     {activeSummary.status}
                   </span>
+                  <button
+                    onClick={handleGenerateExplanation}
+                    disabled={isGeneratingExplanation}
+                    className="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold text-emerald-700 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isGeneratingExplanation ? (
+                      <>
+                        <span className="mr-2 h-3.5 w-3.5 animate-spin rounded-full border-2 border-emerald-300 border-t-emerald-600" />
+                        Generating...
+                      </>
+                    ) : (
+                      "Generate Explanation"
+                    )}
+                  </button>
                 </div>
               </div>
             </section>
@@ -571,6 +658,102 @@ export default function ResultClient({ initialItem }: ResultClientProps) {
                 </button>
               </div>
             </section>
+
+            {explanationError && (
+              <section className="rounded-[28px] border border-red-200 bg-red-50 p-4 text-sm text-red-700 shadow-sm">
+                {explanationError}
+              </section>
+            )}
+
+            {(isGeneratingExplanation || explanationResult) && (
+              <section className="rounded-[28px] border border-emerald-100 bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.05)] sm:p-6">
+                <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-600">Explanation</p>
+                    <h2 className="mt-2 text-2xl font-bold text-slate-900">Model Insight</h2>
+                  </div>
+                  {explanationResult && (
+                    <button
+                      onClick={handleDownloadExplanation}
+                      className="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-200 transition hover:translate-y-[-1px] hover:shadow-xl"
+                    >
+                      Download Explanation
+                    </button>
+                  )}
+                </div>
+
+                {isGeneratingExplanation && (
+                  <div className="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-5 text-emerald-700">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-300 border-t-emerald-600" />
+                    Generating Grad-CAM visualization and explaining the prediction...
+                  </div>
+                )}
+
+                {explanationResult && (
+                  <>
+                    <div className="mb-5 flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-xs text-white">✓</span>
+                      Visualization ready
+                    </div>
+
+                    <div className="grid gap-4 lg:grid-cols-3">
+                      <div className="overflow-hidden rounded-2xl border border-emerald-100 bg-slate-50 p-3 shadow-sm">
+                        <div className="mb-3 flex items-center justify-between text-sm font-medium text-slate-700">
+                          <span>Original image</span>
+                        </div>
+                        <img
+                          src={uploadedImage ?? explanationResult.original_image}
+                          alt="Uploaded waste item"
+                          className="h-52 w-full rounded-xl object-cover"
+                        />
+                      </div>
+
+                      <div className="overflow-hidden rounded-2xl border border-emerald-100 bg-slate-50 p-3 shadow-sm">
+                        <div className="mb-3 flex items-center justify-between text-sm font-medium text-slate-700">
+                          <span>Grad-CAM heatmap</span>
+                        </div>
+                        <img
+                          src={explanationResult.heatmap_image}
+                          alt="Grad-CAM heatmap"
+                          className="h-52 w-full rounded-xl object-cover"
+                        />
+                      </div>
+
+                      <div className="overflow-hidden rounded-2xl border border-emerald-100 bg-slate-50 p-3 shadow-sm">
+                        <div className="mb-3 flex items-center justify-between text-sm font-medium text-slate-700">
+                          <span>Overlay</span>
+                        </div>
+                        <img
+                          src={explanationResult.overlay_image}
+                          alt="Overlay heatmap on original image"
+                          className="h-52 w-full rounded-xl object-cover"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-6 grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
+                      <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5">
+                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Explanation</p>
+                        <p className="mt-3 text-base leading-7 text-slate-700">{explanationResult.explanation}</p>
+                      </div>
+
+                      <div className="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm">
+                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Prediction</p>
+                        <div className="mt-3 text-2xl font-bold text-slate-900">
+                          {ITEM_LABELS[explanationResult.predicted_class] ?? explanationResult.predicted_class}
+                        </div>
+                        <p className="mt-2 text-sm text-slate-600">
+                          Dominant activation region: {explanationResult.dominant_region}
+                        </p>
+                        <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
+                          Confidence: {explanationResult.confidence}%
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </section>
+            )}
 
             <section className="rounded-[28px] border border-emerald-100 bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.05)] sm:p-6">
               <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
