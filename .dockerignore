@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+build
+.git
+.env
+__pycache__
+*.pyc
+.venv
+.python-version
+uv.lock
+pyproject.toml
+ml/__pycache__
+.dockerignore
