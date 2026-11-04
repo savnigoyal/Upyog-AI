@@ -35,10 +35,6 @@ export default function Upload() {
         throw new Error("No item detected. Please try again with a clearer image.");
       }
 
-      if (data.topPredictions && data.topPredictions.length > 0) {
-        sessionStorage.setItem("upyog-smart-predictions", JSON.stringify(data.topPredictions));
-      }
-
       router.push(`/result?item=${encodeURIComponent(data.detectedItem)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong during analysis");

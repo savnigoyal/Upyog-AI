@@ -238,9 +238,23 @@ type ResultClientProps = {
   initialItem: string;
 };
 
-type SmartPrediction = {
-  class_name: string;
-  confidence: number;
+type MarketDemandLevel = "High" | "Medium" | "Low";
+
+type DemandCategory = {
+  category: string;
+  label: string;
+  demand_index: number;
+  demand_level: MarketDemandLevel;
+  explanation: string;
+  recommendation: string;
+};
+
+type MarketDemandResponse = {
+  source: string;
+  is_demo_data: boolean;
+  summary: string;
+  recommendation: string;
+  top_categories: DemandCategory[];
 };
 
 export default function ResultClient({ initialItem }: ResultClientProps) {
@@ -250,23 +264,45 @@ export default function ResultClient({ initialItem }: ResultClientProps) {
   const [price, setPrice] = useState<number | null>(null);
   const [priceError, setPriceError] = useState<string | null>(null);
   const [isPredictingPrice, setIsPredictingPrice] = useState(false);
-  const [smartPredictions, setSmartPredictions] = useState<SmartPrediction[]>([]);
+  const [marketDemand, setMarketDemand] = useState<MarketDemandResponse | null>(null);
+  const [isLoadingDemand, setIsLoadingDemand] = useState(false);
+  const [demandError, setDemandError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const storedPredictions = sessionStorage.getItem("upyog-smart-predictions");
-      if (storedPredictions) {
-        try {
-          setSmartPredictions(JSON.parse(storedPredictions) as SmartPrediction[]);
-        } catch {
-          setSmartPredictions([]);
-        }
-      }
-    }
-
     if (ITEM_TYPES.includes(initialItem as IItemType)) {
       setItemType(initialItem as IItemType);
     }
+
+    const fetchMarketDemand = async () => {
+      setIsLoadingDemand(true);
+      setDemandError(null);
+
+      try {
+        const response = await fetch("/api/demand", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            item: initialItem,
+            category: initialItem,
+          }),
+        });
+
+        const data = await response.json();
+        if (!response.ok || data.error) {
+          throw new Error(data.error || "Waste market demand could not be loaded.");
+        }
+
+        setMarketDemand(data as MarketDemandResponse);
+      } catch (error) {
+        setDemandError(
+          error instanceof Error ? error.message : "Waste market demand could not be loaded."
+        );
+      } finally {
+        setIsLoadingDemand(false);
+      }
+    };
+
+    fetchMarketDemand();
   }, [initialItem]);
 
   const [impact, setImpact] = useState<{
@@ -592,64 +628,141 @@ export default function ResultClient({ initialItem }: ResultClientProps) {
             <section className="rounded-[28px] border border-emerald-100 bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.05)] sm:p-6">
               <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-600">Smart AI Predictions</p>
-                  <h2 className="mt-2 text-2xl font-bold text-slate-900">Smart AI Predictions</h2>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-600">Market intelligence</p>
+                  <h2 className="mt-2 text-2xl font-bold text-slate-900">Waste Market Demand Prediction</h2>
                 </div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700">
-                  <span>✨</span>
-                  Explore the most likely categories identified by our machine learning model.
+                  <span>📊</span>
+                  Sample historical demand data for demonstration only.
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
-                {(smartPredictions.length > 0 ? smartPredictions : [
-                  { class_name: itemType, confidence: 100 },
-                  { class_name: itemType, confidence: 80 },
-                  { class_name: itemType, confidence: 60 },
-                ]).slice(0, 3).map((prediction, index) => {
-                  const label = ITEM_LABELS[prediction.class_name] ?? prediction.class_name;
-                  const confidence = Number(prediction.confidence) || 0;
-                  const isTop = index === 0;
+              {demandError && (
+                <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {demandError}
+                </div>
+              )}
 
-                  return (
-                    <div
-                      key={`${prediction.class_name}-${index}`}
-                      className={`rounded-2xl border p-4 shadow-sm transition hover:-translate-y-1 hover:shadow-md ${
-                        isTop
-                          ? "border-emerald-300 bg-gradient-to-br from-emerald-50 via-white to-emerald-100"
-                          : "border-emerald-100 bg-white"
-                      }`}
-                    >
-                      <div className="mb-3 flex items-center justify-between">
-                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
-                          #{index + 1} {index === 0 ? "Most likely match" : "Alternative match"}
-                        </span>
-                        {isTop && (
-                          <span className="rounded-full bg-emerald-500 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white">
-                            Primary
-                          </span>
-                        )}
+              {isLoadingDemand ? (
+                <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/40 text-base font-medium text-emerald-700">
+                  Loading market demand model...
+                </div>
+              ) : marketDemand ? (
+                <div className="space-y-5">
+                  <div className="rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-green-50 p-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-700">Overview</p>
+                        <p className="mt-2 text-lg font-semibold text-slate-900">{marketDemand.summary}</p>
+                      </div>
+                      <span className="inline-flex rounded-full border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                        {marketDemand.source}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-[1.4fr_0.8fr]">
+                    <div className="rounded-2xl border border-emerald-100 bg-slate-50/70 p-4">
+                      <div className="mb-4 flex items-center justify-between">
+                        <h3 className="text-lg font-bold text-slate-900">Category demand</h3>
+                        <span className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Top 5</span>
                       </div>
 
-                      <div className="mb-3 text-lg font-bold text-slate-900">{label}</div>
+                      <div className="space-y-4">
+                        {marketDemand.top_categories.map((category, index) => {
+                          const levelTone =
+                            category.demand_level === "High"
+                              ? "bg-emerald-500"
+                              : category.demand_level === "Medium"
+                                ? "bg-amber-500"
+                                : "bg-slate-400";
 
-                      <div className="mb-2 flex items-center justify-between text-sm text-slate-700">
-                        <span>Confidence</span>
-                        <span className="font-semibold text-emerald-700">{confidence.toFixed(2)}%</span>
-                      </div>
+                          return (
+                            <div
+                              key={`${category.category}-${index}`}
+                              className="rounded-2xl border border-emerald-100 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                            >
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <div>
+                                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
+                                    #{index + 1}
+                                  </p>
+                                  <p className="mt-1 text-base font-bold text-slate-900">{category.label}</p>
+                                </div>
+                                <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white ${levelTone}`}>
+                                  {category.demand_level}
+                                </span>
+                              </div>
 
-                      <div className="h-2.5 w-full overflow-hidden rounded-full bg-emerald-100">
-                        <div
-                          className={`h-full rounded-full bg-gradient-to-r ${
-                            isTop ? "from-emerald-500 to-green-600" : "from-green-400 to-emerald-500"
-                          } transition-all duration-500`}
-                          style={{ width: `${Math.min(confidence, 100)}%` }}
-                        />
+                              <div className="flex items-center gap-3">
+                                <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-emerald-100">
+                                  <div
+                                    className={`h-full rounded-full ${levelTone} transition-all duration-500`}
+                                    style={{ width: `${Math.min(category.demand_index, 100)}%` }}
+                                  />
+                                </div>
+                                <div className="min-w-[58px] text-right text-sm font-bold text-slate-800">
+                                  {category.demand_index.toFixed(1)}%
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+
+                    <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-green-50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Recommendation</p>
+                      <h3 className="mt-2 text-xl font-bold text-slate-900">Best selling opportunity</h3>
+
+                      <div className="mt-4 rounded-2xl border border-emerald-200 bg-white/80 p-4">
+                        <p className="text-sm font-medium uppercase tracking-[0.18em] text-slate-500">Leading category</p>
+                        <p className="mt-2 text-2xl font-black text-slate-900">
+                          {marketDemand.top_categories[0]?.label ?? "N/A"}
+                        </p>
+                        <p className="mt-2 text-sm text-slate-600">
+                          {marketDemand.top_categories[0]?.recommendation ?? marketDemand.recommendation}
+                        </p>
+                      </div>
+
+                      <div className="mt-4 rounded-2xl border border-emerald-200 bg-white/80 p-4 text-sm text-slate-700">
+                        <p className="font-semibold text-slate-900">Market signal</p>
+                        <p className="mt-2 leading-6">{marketDemand.recommendation}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {marketDemand.top_categories.map((category, index) => (
+                      <div
+                        key={`${category.category}-detail-${index}`}
+                        className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">#{index + 1}</p>
+                            <h4 className="mt-1 text-lg font-bold text-slate-900">{category.label}</h4>
+                          </div>
+                          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white ${
+                            category.demand_level === "High"
+                              ? "bg-emerald-500"
+                              : category.demand_level === "Medium"
+                                ? "bg-amber-500"
+                                : "bg-slate-400"
+                          }`}>
+                            {category.demand_level}
+                          </span>
+                        </div>
+
+                        <p className="mt-3 text-sm leading-6 text-slate-600">{category.explanation}</p>
+                        <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
+                          Recommendation: {category.recommendation}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </section>
 
             <section className="rounded-[28px] border border-emerald-100 bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.05)] sm:p-6">
