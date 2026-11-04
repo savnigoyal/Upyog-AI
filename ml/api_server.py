@@ -163,6 +163,17 @@ def find_last_conv_layer(model_obj):
     return last_conv
 
 
+def get_feature_extractor():
+    if model is None:
+        raise RuntimeError("Waste classification model is unavailable.")
+
+    for layer in model.layers:
+        if isinstance(layer, tf.keras.Model) and layer.name == "efficientnetb0":
+            return layer
+
+    return model
+
+
 def encode_image_to_base64(image_array):
     success, encoded = cv2.imencode(".jpg", image_array)
     if not success:
@@ -206,22 +217,30 @@ def generate_gradcam(img_path):
     predicted_class = CLASS_NAMES[predicted_index]
     confidence = float(prediction[predicted_index])
 
-    target_layer = find_last_conv_layer(model)
+    feature_extractor = get_feature_extractor()
+    target_layer = feature_extractor.get_layer("top_conv")
+    if target_layer is None:
+        target_layer = find_last_conv_layer(feature_extractor)
+
     if target_layer is None:
         raise RuntimeError("Could not locate a convolutional layer for Grad-CAM.")
 
     grad_model = tf.keras.models.Model(
-        inputs=model.inputs,
-        outputs=[target_layer.output, model.output]
+        inputs=feature_extractor.inputs,
+        outputs=[target_layer.output, feature_extractor.output]
     )
 
     with tf.GradientTape() as tape:
-        conv_outputs, outputs = grad_model(tf.cast(img_array_batch, tf.float32))
+        conv_outputs, outputs = grad_model(tf.cast(img_array_batch, tf.float32), training=False)
         class_channel = outputs[:, predicted_index]
 
     grads = tape.gradient(class_channel, conv_outputs)
-    pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
-    heatmap = tf.reduce_mean(tf.cast(conv_outputs, tf.float32) * pooled_grads, axis=-1)
+    if grads is None:
+        raise RuntimeError("Gradients for Grad-CAM are undefined for the selected layer.")
+
+    pooled_grads = tf.reduce_mean(grads, axis=(1, 2))
+    pooled_grads = pooled_grads[:, tf.newaxis, tf.newaxis, :]
+    heatmap = tf.reduce_sum(tf.cast(conv_outputs, tf.float32) * pooled_grads, axis=-1)
     heatmap = tf.nn.relu(heatmap)
     heatmap = heatmap.numpy()[0]
     heatmap = heatmap / (np.max(heatmap) + 1e-8)
