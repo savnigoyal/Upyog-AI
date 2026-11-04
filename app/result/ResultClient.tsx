@@ -631,10 +631,6 @@ export default function ResultClient({ initialItem }: ResultClientProps) {
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-600">Market intelligence</p>
                   <h2 className="mt-2 text-2xl font-bold text-slate-900">Waste Market Demand Prediction</h2>
                 </div>
-                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700">
-                  <span>📊</span>
-                  Sample historical demand data for demonstration only.
-                </div>
               </div>
 
               {demandError && (
