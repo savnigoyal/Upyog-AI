@@ -7,4 +7,3 @@ pandas
 scikit-learn
 openpyxl
 pillow
-opencv-python-headless

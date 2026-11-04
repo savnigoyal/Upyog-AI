@@ -11,10 +11,6 @@ import pickle
 import pandas as pd
 import json
 import uuid
-import base64
-from io import BytesIO
-import cv2
-from PIL import Image
 
 app = FastAPI(title="Upyog AI Recycling API")
 
@@ -146,129 +142,6 @@ except Exception as e:
 # IMAGE PREPROCESSING AND PREDICTION
 # --------------------------------------------------
 
-def find_last_conv_layer(model_obj):
-    last_conv = None
-
-    def visit(node):
-        nonlocal last_conv
-        if isinstance(node, tf.keras.layers.Conv2D):
-            last_conv = node
-        elif isinstance(node, tf.keras.Model):
-            for child in node.layers:
-                visit(child)
-
-    for layer in model_obj.layers:
-        visit(layer)
-
-    return last_conv
-
-
-def get_feature_extractor():
-    if model is None:
-        raise RuntimeError("Waste classification model is unavailable.")
-
-    for layer in model.layers:
-        if isinstance(layer, tf.keras.Model) and layer.name == "efficientnetb0":
-            return layer
-
-    return model
-
-
-def encode_image_to_base64(image_array):
-    success, encoded = cv2.imencode(".jpg", image_array)
-    if not success:
-        raise ValueError("Unable to encode image to JPEG data.")
-    return "data:image/jpeg;base64," + base64.b64encode(encoded.tobytes()).decode("utf-8")
-
-
-def extract_dominant_region(heatmap):
-    if heatmap.size == 0:
-        return "center"
-
-    high_activation = heatmap > np.quantile(heatmap, 0.75)
-    if not np.any(high_activation):
-        return "center"
-
-    ys, xs = np.where(high_activation)
-    center_x = int(np.mean(xs))
-    center_y = int(np.mean(ys))
-    height, width = heatmap.shape
-
-    x_bucket = "left" if center_x < width * 0.33 else "right" if center_x > width * 0.66 else "center"
-    y_bucket = "upper" if center_y < height * 0.33 else "lower" if center_y > height * 0.66 else "middle"
-
-    if y_bucket == "middle":
-        return f"{x_bucket} middle region"
-    if x_bucket == "center":
-        return f"{y_bucket} center region"
-    return f"{y_bucket} {x_bucket} region"
-
-
-def generate_gradcam(img_path):
-    if model is None:
-        raise RuntimeError("Waste classification model is unavailable.")
-
-    img = image.load_img(img_path, target_size=(224, 224), color_mode="rgb")
-    img_array = image.img_to_array(img)
-    img_array_batch = np.expand_dims(img_array, axis=0)
-
-    prediction = model.predict(img_array_batch, verbose=0)[0]
-    predicted_index = int(np.argmax(prediction))
-    predicted_class = CLASS_NAMES[predicted_index]
-    confidence = float(prediction[predicted_index])
-
-    feature_extractor = get_feature_extractor()
-    target_layer = feature_extractor.get_layer("top_conv")
-    if target_layer is None:
-        target_layer = find_last_conv_layer(feature_extractor)
-
-    if target_layer is None:
-        raise RuntimeError("Could not locate a convolutional layer for Grad-CAM.")
-
-    grad_model = tf.keras.models.Model(
-        inputs=feature_extractor.inputs,
-        outputs=[target_layer.output, feature_extractor.output]
-    )
-
-    with tf.GradientTape() as tape:
-        conv_outputs, outputs = grad_model(tf.cast(img_array_batch, tf.float32), training=False)
-        class_channel = outputs[:, predicted_index]
-
-    grads = tape.gradient(class_channel, conv_outputs)
-    if grads is None:
-        raise RuntimeError("Gradients for Grad-CAM are undefined for the selected layer.")
-
-    pooled_grads = tf.reduce_mean(grads, axis=(1, 2))
-    pooled_grads = pooled_grads[:, tf.newaxis, tf.newaxis, :]
-    heatmap = tf.reduce_sum(tf.cast(conv_outputs, tf.float32) * pooled_grads, axis=-1)
-    heatmap = tf.nn.relu(heatmap)
-    heatmap = heatmap.numpy()[0]
-    heatmap = heatmap / (np.max(heatmap) + 1e-8)
-
-    heatmap_resized = cv2.resize(heatmap, (img.width, img.height))
-    heatmap_uint8 = np.uint8(255 * heatmap_resized)
-    heatmap_color = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET)
-
-    original_bgr = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-    overlay = cv2.addWeighted(original_bgr, 0.65, heatmap_color, 0.35, 0)
-
-    dominant_region = extract_dominant_region(heatmap_resized)
-    explanation = (
-        f"The strongest activation appears in the {dominant_region}, where the model found the most distinctive visual cues "
-        f"for {predicted_class}. These highlighted pixels most strongly influenced the prediction toward this waste category."
-    )
-
-    return {
-        "predicted_class": predicted_class,
-        "confidence": round(confidence * 100, 2),
-        "dominant_region": dominant_region,
-        "explanation": explanation,
-        "original_image": encode_image_to_base64(original_bgr),
-        "heatmap_image": encode_image_to_base64(heatmap_color),
-        "overlay_image": encode_image_to_base64(overlay),
-    }
-
-
 def predict_image(img_path):
 
     if model is None:
@@ -281,22 +154,27 @@ def predict_image(img_path):
     )
 
     img_array = image.img_to_array(img)
-
     img_array = np.expand_dims(img_array, axis=0)
 
-    # The shared model configuration includes its own
-    # preprocessing/augmentation layers.
-    predictions = model.predict(img_array, verbose=0)
+    predictions = model.predict(img_array, verbose=0)[0]
+    top_indices = np.argsort(predictions)[::-1][:3]
 
-    predicted_index = int(np.argmax(predictions[0]))
+    top_predictions = []
+    for idx in top_indices:
+        score = float(predictions[idx])
+        top_predictions.append({
+            "class_name": CLASS_NAMES[int(idx)],
+            "confidence": round(score * 100, 2),
+        })
 
+    predicted_index = int(np.argmax(predictions))
     predicted_class = CLASS_NAMES[predicted_index]
-
-    confidence = float(predictions[0][predicted_index])
+    confidence = float(predictions[predicted_index])
 
     return {
         "predicted_class": predicted_class,
-        "confidence": round(confidence * 100, 2)
+        "confidence": round(confidence * 100, 2),
+        "top_predictions": top_predictions,
     }
 
 
@@ -325,47 +203,6 @@ async def predict(file: UploadFile = File(...)):
         result = predict_image(temp_path)
 
         return result
-
-    except Exception as e:
-        return {
-            "error": str(e)
-        }
-
-    finally:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-
-        await file.close()
-
-
-# --------------------------------------------------
-# GRAD-CAM EXPLANATION ENDPOINT
-# --------------------------------------------------
-
-@app.post("/explain")
-async def explain(file: UploadFile = File(...)):
-    if model is None:
-        return {
-            "error": "Image classification model is not available."
-        }
-
-    temp_path = os.path.join(
-        BASE_DIR,
-        f"gradcam_{uuid.uuid4().hex}.jpg"
-    )
-
-    try:
-        with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-
-        try:
-            with Image.open(temp_path) as image_obj:
-                image_obj.verify()
-        except Exception as exc:
-            raise ValueError(f"Invalid image uploaded: {str(exc)}") from exc
-
-        explanation = generate_gradcam(temp_path)
-        return explanation
 
     except Exception as e:
         return {

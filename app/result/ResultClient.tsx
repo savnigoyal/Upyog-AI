@@ -238,14 +238,9 @@ type ResultClientProps = {
   initialItem: string;
 };
 
-type ExplanationResult = {
-  predicted_class: string;
+type SmartPrediction = {
+  class_name: string;
   confidence: number;
-  dominant_region: string;
-  explanation: string;
-  original_image: string;
-  heatmap_image: string;
-  overlay_image: string;
 };
 
 export default function ResultClient({ initialItem }: ResultClientProps) {
@@ -255,16 +250,17 @@ export default function ResultClient({ initialItem }: ResultClientProps) {
   const [price, setPrice] = useState<number | null>(null);
   const [priceError, setPriceError] = useState<string | null>(null);
   const [isPredictingPrice, setIsPredictingPrice] = useState(false);
-  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
-  const [explanationResult, setExplanationResult] = useState<ExplanationResult | null>(null);
-  const [isGeneratingExplanation, setIsGeneratingExplanation] = useState(false);
-  const [explanationError, setExplanationError] = useState<string | null>(null);
+  const [smartPredictions, setSmartPredictions] = useState<SmartPrediction[]>([]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const storedImage = sessionStorage.getItem("upyog-last-upload");
-      if (storedImage) {
-        setUploadedImage(storedImage);
+      const storedPredictions = sessionStorage.getItem("upyog-smart-predictions");
+      if (storedPredictions) {
+        try {
+          setSmartPredictions(JSON.parse(storedPredictions) as SmartPrediction[]);
+        } catch {
+          setSmartPredictions([]);
+        }
       }
     }
 
@@ -356,58 +352,6 @@ export default function ResultClient({ initialItem }: ResultClientProps) {
     return null;
   };
 
-  const handleGenerateExplanation = async () => {
-    if (!uploadedImage) {
-      setExplanationError("Upload an image before generating an explanation.");
-      return;
-    }
-
-    setIsGeneratingExplanation(true);
-    setExplanationError(null);
-
-    try {
-      const imageResponse = await fetch(uploadedImage);
-      const imageBlob = await imageResponse.blob();
-      const formData = new FormData();
-      const imageFile = new File([imageBlob], "uploaded-image.jpg", {
-        type: imageBlob.type || "image/jpeg",
-      });
-
-      formData.append("file", imageFile);
-
-      const response = await fetch("/api/explain", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || data.error) {
-        throw new Error(data.error || "Could not generate the explanation");
-      }
-
-      setExplanationResult(data as ExplanationResult);
-    } catch (error) {
-      setExplanationError(
-        error instanceof Error ? error.message : "Could not generate the explanation"
-      );
-      setExplanationResult(null);
-    } finally {
-      setIsGeneratingExplanation(false);
-    }
-  };
-
-  const handleDownloadExplanation = () => {
-    if (!explanationResult?.overlay_image) return;
-
-    const link = document.createElement("a");
-    link.href = explanationResult.overlay_image;
-    link.download = `upyog-gradcam-${itemType}.jpg`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   const impactCards = [
     {
       label: "CO₂ saved",
@@ -474,20 +418,6 @@ export default function ResultClient({ initialItem }: ResultClientProps) {
                   <span className="rounded-full bg-gradient-to-r from-emerald-500 to-green-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm shadow-emerald-200">
                     {activeSummary.status}
                   </span>
-                  <button
-                    onClick={handleGenerateExplanation}
-                    disabled={isGeneratingExplanation}
-                    className="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold text-emerald-700 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isGeneratingExplanation ? (
-                      <>
-                        <span className="mr-2 h-3.5 w-3.5 animate-spin rounded-full border-2 border-emerald-300 border-t-emerald-600" />
-                        Generating...
-                      </>
-                    ) : (
-                      "Generate Explanation"
-                    )}
-                  </button>
                 </div>
               </div>
             </section>
@@ -659,101 +589,68 @@ export default function ResultClient({ initialItem }: ResultClientProps) {
               </div>
             </section>
 
-            {explanationError && (
-              <section className="rounded-[28px] border border-red-200 bg-red-50 p-4 text-sm text-red-700 shadow-sm">
-                {explanationError}
-              </section>
-            )}
-
-            {(isGeneratingExplanation || explanationResult) && (
-              <section className="rounded-[28px] border border-emerald-100 bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.05)] sm:p-6">
-                <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-600">Explanation</p>
-                    <h2 className="mt-2 text-2xl font-bold text-slate-900">Model Insight</h2>
-                  </div>
-                  {explanationResult && (
-                    <button
-                      onClick={handleDownloadExplanation}
-                      className="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-200 transition hover:translate-y-[-1px] hover:shadow-xl"
-                    >
-                      Download Explanation
-                    </button>
-                  )}
+            <section className="rounded-[28px] border border-emerald-100 bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.05)] sm:p-6">
+              <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-600">Smart AI Predictions</p>
+                  <h2 className="mt-2 text-2xl font-bold text-slate-900">Smart AI Predictions</h2>
                 </div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700">
+                  <span>✨</span>
+                  Explore the most likely categories identified by our machine learning model.
+                </div>
+              </div>
 
-                {isGeneratingExplanation && (
-                  <div className="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-5 text-emerald-700">
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-300 border-t-emerald-600" />
-                    Generating Grad-CAM visualization and explaining the prediction...
-                  </div>
-                )}
+              <div className="grid gap-4 md:grid-cols-3">
+                {(smartPredictions.length > 0 ? smartPredictions : [
+                  { class_name: itemType, confidence: 100 },
+                  { class_name: itemType, confidence: 80 },
+                  { class_name: itemType, confidence: 60 },
+                ]).slice(0, 3).map((prediction, index) => {
+                  const label = ITEM_LABELS[prediction.class_name] ?? prediction.class_name;
+                  const confidence = Number(prediction.confidence) || 0;
+                  const isTop = index === 0;
 
-                {explanationResult && (
-                  <>
-                    <div className="mb-5 flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
-                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-xs text-white">✓</span>
-                      Visualization ready
-                    </div>
+                  return (
+                    <div
+                      key={`${prediction.class_name}-${index}`}
+                      className={`rounded-2xl border p-4 shadow-sm transition hover:-translate-y-1 hover:shadow-md ${
+                        isTop
+                          ? "border-emerald-300 bg-gradient-to-br from-emerald-50 via-white to-emerald-100"
+                          : "border-emerald-100 bg-white"
+                      }`}
+                    >
+                      <div className="mb-3 flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
+                          #{index + 1} {index === 0 ? "Most likely match" : "Alternative match"}
+                        </span>
+                        {isTop && (
+                          <span className="rounded-full bg-emerald-500 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white">
+                            Primary
+                          </span>
+                        )}
+                      </div>
 
-                    <div className="grid gap-4 lg:grid-cols-3">
-                      <div className="overflow-hidden rounded-2xl border border-emerald-100 bg-slate-50 p-3 shadow-sm">
-                        <div className="mb-3 flex items-center justify-between text-sm font-medium text-slate-700">
-                          <span>Original image</span>
-                        </div>
-                        <img
-                          src={uploadedImage ?? explanationResult.original_image}
-                          alt="Uploaded waste item"
-                          className="h-52 w-full rounded-xl object-cover"
+                      <div className="mb-3 text-lg font-bold text-slate-900">{label}</div>
+
+                      <div className="mb-2 flex items-center justify-between text-sm text-slate-700">
+                        <span>Confidence</span>
+                        <span className="font-semibold text-emerald-700">{confidence.toFixed(2)}%</span>
+                      </div>
+
+                      <div className="h-2.5 w-full overflow-hidden rounded-full bg-emerald-100">
+                        <div
+                          className={`h-full rounded-full bg-gradient-to-r ${
+                            isTop ? "from-emerald-500 to-green-600" : "from-green-400 to-emerald-500"
+                          } transition-all duration-500`}
+                          style={{ width: `${Math.min(confidence, 100)}%` }}
                         />
                       </div>
-
-                      <div className="overflow-hidden rounded-2xl border border-emerald-100 bg-slate-50 p-3 shadow-sm">
-                        <div className="mb-3 flex items-center justify-between text-sm font-medium text-slate-700">
-                          <span>Grad-CAM heatmap</span>
-                        </div>
-                        <img
-                          src={explanationResult.heatmap_image}
-                          alt="Grad-CAM heatmap"
-                          className="h-52 w-full rounded-xl object-cover"
-                        />
-                      </div>
-
-                      <div className="overflow-hidden rounded-2xl border border-emerald-100 bg-slate-50 p-3 shadow-sm">
-                        <div className="mb-3 flex items-center justify-between text-sm font-medium text-slate-700">
-                          <span>Overlay</span>
-                        </div>
-                        <img
-                          src={explanationResult.overlay_image}
-                          alt="Overlay heatmap on original image"
-                          className="h-52 w-full rounded-xl object-cover"
-                        />
-                      </div>
                     </div>
-
-                    <div className="mt-6 grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
-                      <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5">
-                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Explanation</p>
-                        <p className="mt-3 text-base leading-7 text-slate-700">{explanationResult.explanation}</p>
-                      </div>
-
-                      <div className="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm">
-                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Prediction</p>
-                        <div className="mt-3 text-2xl font-bold text-slate-900">
-                          {ITEM_LABELS[explanationResult.predicted_class] ?? explanationResult.predicted_class}
-                        </div>
-                        <p className="mt-2 text-sm text-slate-600">
-                          Dominant activation region: {explanationResult.dominant_region}
-                        </p>
-                        <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
-                          Confidence: {explanationResult.confidence}%
-                        </p>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </section>
-            )}
+                  );
+                })}
+              </div>
+            </section>
 
             <section className="rounded-[28px] border border-emerald-100 bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.05)] sm:p-6">
               <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

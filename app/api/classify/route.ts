@@ -39,6 +39,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       detectedItem: data.predicted_class,
+      confidence: data.confidence,
+      topPredictions: data.top_predictions ?? [],
     });
   } catch (error) {
     console.error("Classify route error:", error);

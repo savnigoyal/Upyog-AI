@@ -35,8 +35,8 @@ export default function Upload() {
         throw new Error("No item detected. Please try again with a clearer image.");
       }
 
-      if (preview) {
-        sessionStorage.setItem("upyog-last-upload", preview);
+      if (data.topPredictions && data.topPredictions.length > 0) {
+        sessionStorage.setItem("upyog-smart-predictions", JSON.stringify(data.topPredictions));
       }
 
       router.push(`/result?item=${encodeURIComponent(data.detectedItem)}`);
@@ -114,9 +114,6 @@ export default function Upload() {
                     const imageDataUrl = typeof reader.result === "string" ? reader.result : "";
                     setFile(selectedFile);
                     setPreview(imageDataUrl);
-                    if (imageDataUrl) {
-                      sessionStorage.setItem("upyog-last-upload", imageDataUrl);
-                    }
                     setError(null);
                   };
 
